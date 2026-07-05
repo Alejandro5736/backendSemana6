@@ -20,4 +20,5 @@ jobs:
         cache: maven
         
     - name: Run Tests with Maven
+      working-directory: ./backendSemana6
       run: ./mvnw test
