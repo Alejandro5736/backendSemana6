@@ -21,29 +21,27 @@ public class MinimarketService {
         return true;
     }
 
-   // Archivo: src/main/java/com/minimarketplus/backendSemana6/service/MinimarketService.java
-
-public Inventario registrarMovimientoInventario(Usuario usuarioActivo, Long movimientoId, Producto producto, String tipoMovimiento, int cantidad) {
-    if (usuarioActivo == null || (!"ADMIN".equals(usuarioActivo.getRol()) && !"ENCARGADO".equals(usuarioActivo.getRol()))) {
-        throw new SecurityException("Operación no permitida: Usuario no autorizado para mover inventario.");
-    }
-
-    if ("ENTRADA".equalsIgnoreCase(tipoMovimiento)) {
-        producto.setStock(producto.getStock() + cantidad);
-    } else if ("SALIDA".equalsIgnoreCase(tipoMovimiento)) {
-        if (producto.getStock() < cantidad) {
-            throw new IllegalArgumentException("Stock insuficiente para realizar la salida.");
+    // 3. INVENTARIO: Registro de movimientos (ADMIN o ENCARGADO)
+    public Inventario registrarMovimientoInventario(Usuario usuarioActivo, Long movimientoId, Producto producto, String tipoMovimiento, int cantidad) {
+        if (usuarioActivo == null || (!"ADMIN".equals(usuarioActivo.getRol()) && !"ENCARGADO".equals(usuarioActivo.getRol()))) {
+            throw new SecurityException("Operación no permitida: Usuario no autorizado para mover inventario.");
         }
-        producto.setStock(producto.getStock() - cantidad);
-    } else {
-        throw new IllegalArgumentException("Tipo de movimiento inválido.");
+
+        if ("ENTRADA".equalsIgnoreCase(tipoMovimiento)) {
+            producto.setStock(producto.getStock() + cantidad);
+        } else if ("SALIDA".equalsIgnoreCase(tipoMovimiento)) {
+            if (producto.getStock() < cantidad) {
+                throw new IllegalArgumentException("Stock insuficiente para realizar la salida.");
+            }
+            producto.setStock(producto.getStock() - cantidad);
+        } else {
+            throw new IllegalArgumentException("Tipo de movimiento inválido.");
+        }
+
+        return new Inventario(movimientoId, producto, tipoMovimiento.toUpperCase(), cantidad, usuarioActivo.getUsername());
     }
 
-    // Retornamos el objeto Inventario, que es lo que espera el Controller
-    return new Inventario(movimientoId, producto, tipoMovimiento.toUpperCase(), cantidad, usuarioActivo.getUsername());
-}
-
-    // 4. VENTA: Generar venta (Solo CAJERO)
+    // 4. VENTA: Generar venta con Validación de Stock Crítico (Solo CAJERO)
     public Venta generarVenta(Usuario usuarioActivo, Long ventaId, List<Producto> productos) {
         if (usuarioActivo == null || !"CAJERO".equals(usuarioActivo.getRol())) {
             throw new SecurityException("Operación no permitida: Solo los cajeros pueden generar ventas.");
@@ -51,6 +49,13 @@ public Inventario registrarMovimientoInventario(Usuario usuarioActivo, Long movi
 
         double totalVenta = 0;
         for (Producto p : productos) {
+            // Validación de stock crítico antes de procesar el elemento
+            if (p.getStock() <= 0) {
+                throw new IllegalArgumentException("Stock insuficiente para el producto: " + p.getNombre());
+            }
+            
+            // Disminución controlada del stock por unidad vendida
+            p.setStock(p.getStock() - 1);
             totalVenta += p.getPrecio();
         }
 

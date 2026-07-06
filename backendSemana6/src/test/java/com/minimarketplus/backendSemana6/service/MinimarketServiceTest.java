@@ -1,63 +1,124 @@
 package com.minimarketplus.backendSemana6.service;
 
-import static org.junit.jupiter.api.Assertions.*;
 import com.minimarketplus.backendSemana6.model.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 public class MinimarketServiceTest {
 
-    private MinimarketService service;
-    private Usuario admin;
-    private Usuario cajero;
-    private Usuario encargado;
-    private Producto producto;
+    private MinimarketService minimarketService;
+    private Producto productoEjemplo;
 
     @BeforeEach
-    void setUp() {
-        service = new MinimarketService();
-        admin = new Usuario("admin", "123", "ADMIN");
-        cajero = new Usuario("cajero", "123", "CAJERO");
-        encargado = new Usuario("encargado", "123", "ENCARGADO");
-        producto = new Producto(1L, "Leche", 10.0, 50);
+    public void setUp() {
+        minimarketService = new MinimarketService();
+        // Inicializamos un producto con ID 1, nombre, precio 2.5 y stock inicial de 10 unidades
+        productoEjemplo = new Producto(1L, "Leche", 2.5, 10);
+    }
+
+    // ==========================================
+    // 1. PRUEBAS DE AUTENTICACIÓN (USUARIO)
+    // ==========================================
+    @Test
+    public void testAutenticarExitoso() {
+        Usuario usuario = new Usuario("juan123", "clave123", "CAJERO");
+        assertTrue(minimarketService.autenticar(usuario, "clave123"));
     }
 
     @Test
-    void testModificarProductoSoloAdmin() {
-        // Prueba exitosa
-        assertDoesNotThrow(() -> service.modificarProducto(admin, producto, "Leche Entera", 12.0));
-        assertEquals("Leche Entera", producto.getNombre());
+    public void testAutenticarFallido() {
+        Usuario usuario = new Usuario("juan123", "clave123", "CAJERO");
+        assertFalse(minimarketService.autenticar(usuario, "clave_incorrecta"));
+    }
 
-        // Prueba de fallo (no es admin)
-        assertThrows(SecurityException.class, () -> service.modificarProducto(cajero, producto, "Error", 0.0));
+    // ==========================================
+    // 2. PRUEBAS DE PRODUCTO (ROLES)
+    // ==========================================
+    @Test
+    public void testModificarProductoComoAdminExitoso() {
+        Usuario admin = new Usuario("admin01", "adminpass", "ADMIN");
+        boolean resultado = minimarketService.modificarProducto(admin, productoEjemplo, "Leche Descremada", 3.0);
+        
+        assertTrue(resultado);
+        assertEquals("Leche Descremada", productoEjemplo.getNombre());
+        assertEquals(3.0, productoEjemplo.getPrecio());
     }
 
     @Test
-    void testMovimientosInventario() {
-        // Prueba de entrada
-        service.registrarMovimientoInventario(encargado, 1L, producto, "ENTRADA", 10);
-        assertEquals(60, producto.getStock());
+    public void testModificarProductoComoNoAdminFalla() {
+        Usuario cajero = new Usuario("cajero01", "cajeropass", "CAJERO");
+        
+        assertThrows(SecurityException.class, () -> {
+            minimarketService.modificarProducto(cajero, productoEjemplo, "Intento Hacker", 99.0);
+        });
+    }
 
-        // Prueba de salida (encargado tiene permiso)
-        service.registrarMovimientoInventario(encargado, 2L, producto, "SALIDA", 5);
-        assertEquals(55, producto.getStock());
-
-        // Prueba de seguridad
-        assertThrows(SecurityException.class, () -> service.registrarMovimientoInventario(cajero, 3L, producto, "SALIDA", 1));
+    // ==========================================
+    // 3. PRUEBAS DE INVENTARIO
+    // ==========================================
+    @Test
+    public void testRegistrarEntradaInventarioExitoso() {
+        Usuario encargado = new Usuario("pedro", "pass", "ENCARGADO");
+        Inventario inv = minimarketService.registrarMovimientoInventario(encargado, 101L, productoEjemplo, "ENTRADA", 5);
+        
+        assertNotNull(inv);
+        assertEquals(15, productoEjemplo.getStock()); // 10 iniciales + 5 entrada
     }
 
     @Test
-    void testGenerarVentaSoloCajero() {
-        List<Producto> carrito = Arrays.asList(producto);
+    public void testRegistrarSalidaInventarioInsuficienteFalla() {
+        Usuario admin = new Usuario("admin01", "adminpass", "ADMIN");
+        
+        assertThrows(IllegalArgumentException.class, () -> {
+            // Se intentan sacar 20 unidades pero solo hay 10
+            minimarketService.registrarMovimientoInventario(admin, 102L, productoEjemplo, "SALIDA", 20);
+        });
+    }
 
-        // Prueba exitosa
-        Venta venta = service.generarVenta(cajero, 100L, carrito);
+    // ==========================================
+    // 4. PRUEBAS DE VENTA Y STOCK CRÍTICO (NUEVO)
+    // ==========================================
+    @Test
+    public void testGenerarVentaComoCajeroYReduceStock() {
+        Usuario cajero = new Usuario("cajero01", "cajeropass", "CAJERO");
+        List<Producto> carrito = new ArrayList<>();
+        carrito.add(productoEjemplo); // Stock inicial es 10
+
+        Venta venta = minimarketService.generarVenta(cajero, 500L, carrito);
+        
         assertNotNull(venta);
-        assertEquals(10.0, venta.getTotal());
+        assertEquals(2.5, venta.getTotal());
+        assertEquals(9, productoEjemplo.getStock()); // Validamos que restó 1 unidad del stock
+    }
 
-        // Prueba de fallo (admin no debe generar venta si la regla es exclusiva de cajeros)
-        assertThrows(SecurityException.class, () -> service.generarVenta(admin, 101L, carrito));
+    @Test
+    public void testGenerarVentaFallaPorStockCritico() {
+        Usuario cajero = new Usuario("cajero01", "cajeropass", "CAJERO");
+        
+        // Seteamos el stock críticamente en 0
+        productoEjemplo.setStock(0); 
+        
+        List<Producto> carrito = new ArrayList<>();
+        carrito.add(productoEjemplo);
+
+        // Debe lanzar la excepción debido a la validación de stock <= 0
+        assertThrows(IllegalArgumentException.class, () -> {
+            minimarketService.generarVenta(cajero, 501L, carrito);
+        });
+    }
+
+    @Test
+    public void testGenerarVentaRolInvalidoFalla() {
+        Usuario cliente = new Usuario("cliente01", "pass", "CLIENTE");
+        List<Producto> carrito = new ArrayList<>();
+        carrito.add(productoEjemplo);
+
+        assertThrows(SecurityException.class, () -> {
+            minimarketService.generarVenta(cliente, 502L, carrito);
+        });
     }
 }
