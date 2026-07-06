@@ -80,7 +80,7 @@ public class MinimarketServiceTest {
     }
 
     // ==========================================
-    // 4. PRUEBAS DE VENTA Y STOCK CRÍTICO (NUEVO)
+    // 4. PRUEBAS DE VENTA Y ESCENARIOS COMPLEJOS
     // ==========================================
     @Test
     public void testGenerarVentaComoCajeroYReduceStock() {
@@ -119,6 +119,21 @@ public class MinimarketServiceTest {
 
         assertThrows(SecurityException.class, () -> {
             minimarketService.generarVenta(cliente, 502L, carrito);
+        });
+    }
+
+    @Test
+    public void testGenerarVentaProductoInexistenteFalla() {
+        Usuario cajero = new Usuario("cajero01", "cajeropass", "CAJERO");
+        List<Producto> carrito = new ArrayList<>();
+        
+        // Simulamos un producto fantasma con un ID que no está mapeado en la base de datos simulada
+        Producto productoFantasma = new Producto(999L, "Producto Inexistente", 10.0, 0);
+        carrito.add(productoFantasma);
+
+        // Debe lanzar una excepción porque rompe las reglas de consistencia de inventario real
+        assertThrows(IllegalArgumentException.class, () -> {
+            minimarketService.generarVenta(cajero, 503L, carrito);
         });
     }
 }
